@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registered Users</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header class="hero compact">
+        <div>
+            <div class="eyebrow">SQLite User Store</div>
+            <h1>Registered Users</h1>
+            <p>Each user stores enrolled sample paths and the latest averaged feature vector.</p>
+        </div>
+        <div class="hero-actions">
+            <a href="{{ url_for('index') }}" class="link-button">Back to Dashboard</a>
+            <a href="{{ url_for('logout') }}" class="link-button">Logout</a>
+        </div>
+    </header>
+
+    <main class="dashboard single-column">
+        <section class="panel">
+            <h2>User Directory</h2>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Samples</th>
+                            <th>Stored Paths</th>
+                            <th>Feature Summary</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.id }}</td>
+                            <td>{{ user.name }}</td>
+                            <td>{{ user.image_paths|length }}</td>
+                            <td class="path-cell">{{ user.image_paths|join(', ') }}</td>
+                            <td>
+                                {% if user.features %}
+                                    vector={{ user.features.get('face_vector', [])|length }}, eye={{ "%.2f"|format(user.features.get('eye_distance', 0)) }}
+                                {% else %}
+                                    Not trained
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5">No users enrolled yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

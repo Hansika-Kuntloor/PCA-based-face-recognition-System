@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCA-Based Face Recognition System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header class="hero">
+        <div>
+            <div class="eyebrow"></div>
+            <h1>PCA-Based Face Recognition System</h1>
+            <p>Register users from a webcam, train eigenfaces, and recognize people in real time with correlation and eye-distance checks.</p>
+        </div>
+
+        <div class="hero-actions">
+            <button id="trainBtn" type="button" class="secondary">Train Model</button>
+            <a href="{{ url_for('users_page') }}" class="link-button">View Users</a>
+            <a href="{{ url_for('logout') }}" class="link-button">Logout</a>
+        </div>
+    </header>
+
+    <main class="dashboard">
+        <section class="panel">
+            <h2>Registration</h2>
+            <p class="section-note">Capture at least 5 samples with different expressions or slight angle changes for better PCA coverage.</p>
+
+            <div class="form-row">
+                <input id="nameInput" type="text" placeholder="Enter full name">
+                <button id="captureBtn" type="button">Capture Sample</button>
+                <button id="registerBtn" type="button" class="secondary">Register User</button>
+            </div>
+
+            <div class="counter-bar">
+                <span>Captured Samples: <strong id="sampleCounter">0</strong></span>
+                <button id="clearSamplesBtn" type="button" class="ghost">Clear Samples</button>
+            </div>
+
+            <div class="preview-strip" id="previewStrip"></div>
+        </section>
+
+        <section class="panel panel-video">
+            <h2>Live Camera</h2>
+            <div class="camera-wrapper">
+                <video id="video" autoplay playsinline muted></video>
+                <canvas id="overlayCanvas"></canvas>
+            </div>
+            <canvas id="captureCanvas" hidden></canvas>
+        </section>
+
+        <section class="panel">
+            <h2>Recognition</h2>
+            <p class="section-note">Run recognition on the current frame to predict identity or classify as unknown.</p>
+            <div class="form-row">
+                <button id="recognizeBtn" type="button">Recognize Current Face</button>
+            </div>
+
+            <div class="result-grid">
+                <div class="stat-card">
+                    <span>Prediction</span>
+                    <strong id="recognitionName">Unknown</strong>
+                </div>
+                <div class="stat-card">
+                    <span>Composite Distance</span>
+                    <strong id="recognitionDistance">-</strong>
+                </div>
+                <div class="stat-card">
+                    <span>Correlation</span>
+                    <strong id="recognitionCorrelation">-</strong>
+                </div>
+                <div class="stat-card">
+                    <span>Eye Gap</span>
+                    <strong id="recognitionEyeGap">-</strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel metrics-panel">
+            <h2>Model Status</h2>
+            <div class="metrics-grid">
+                <div class="metric">
+                    <span>Model Available</span>
+                    <strong id="metricModelAvailable">{{ "Yes" if model_available else "No" }}</strong>
+                </div>
+                <div class="metric">
+                    <span>Registered Users</span>
+                    <strong>{{ users|length }}</strong>
+                </div>
+                <div class="metric">
+                    <span>Training Samples</span>
+                    <strong id="metricSamples">{{ metrics.get("samples", 0)|int }}</strong>
+                </div>
+                <div class="metric">
+                    <span>Training Accuracy</span>
+                    <strong id="metricAccuracy">{{ metrics.get("accuracy", 0) }}%</strong>
+                </div>
+            </div>
+
+            <div id="statusMessage" class="alert info" aria-live="polite">System ready. Start the camera, register users, then train the PCA model.</div>
+        </section>
+    </main>
+
+    <script>
+        window.APP_STATE = {
+            trainUrl: "{{ url_for('train') }}",
+            registerUrl: "{{ url_for('register') }}",
+            recognizeUrl: "{{ url_for('recognize') }}",
+            usersUrl: "{{ url_for('users') }}"
+        };
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js', v='20260423a') }}"></script>
+</body>
+</html>

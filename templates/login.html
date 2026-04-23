@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCA Face Recognition Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body class="auth-body">
+    <main class="auth-card auth-single">
+        <section class="auth-intro">
+            <div class="eyebrow">PCA-Based Face Recognition System</div>
+            <h1>Secure Access</h1>
+            <p class="subtitle">Sign in to manage registrations, train eigenfaces, and run live recognition.</p>
+
+            {% if not has_auth_users %}
+            <div class="alert info">No login account exists yet. Use the register button below to create one first.</div>
+            {% endif %}
+        </section>
+
+        {% if success_message %}
+        <div class="alert info">{{ success_message }}</div>
+        {% endif %}
+
+        {% if login_error %}
+        <div class="alert error">{{ login_error }}</div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('login') }}" class="auth-form">
+            <label>
+                Username
+                <input type="text" name="username" placeholder="Enter username" required>
+            </label>
+
+            <label>
+                Password
+                <input type="password" name="password" placeholder="Enter password" required>
+            </label>
+
+            <button type="submit">Login</button>
+        </form>
+
+        <div class="auth-actions">
+            <a href="{{ url_for('signup') }}" class="link-button secondary-link">Sign Up / Register</a>
+        </div>
+    </main>
+</body>
+</html>

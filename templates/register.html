@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCA Face Recognition Register</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body class="auth-body">
+    <main class="auth-card auth-single">
+        <section class="auth-intro">
+            <div class="eyebrow">PCA-Based Face Recognition System</div>
+            <h1>Create Account</h1>
+            <p class="subtitle">Register a login account for this system, then sign in from the login page.</p>
+        </section>
+
+        {% if signup_error %}
+        <div class="alert error">{{ signup_error }}</div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('signup') }}" class="auth-form">
+            <label>
+                Username
+                <input type="text" name="register_username" placeholder="Choose username" required>
+            </label>
+
+            <label>
+                Password
+                <input type="password" name="register_password" placeholder="Choose password" required>
+            </label>
+
+            <label>
+                Confirm Password
+                <input type="password" name="confirm_password" placeholder="Re-enter password" required>
+            </label>
+
+            <button type="submit" class="secondary">Create Account</button>
+        </form>
+
+        <div class="auth-actions">
+            <a href="{{ url_for('login') }}" class="link-button secondary-link">Back to Login</a>
+        </div>
+    </main>
+</body>
+</html>
