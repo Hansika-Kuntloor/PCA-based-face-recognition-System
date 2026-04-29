@@ -1,3 +1,5 @@
+from collections import Counter
+
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
 
 from db import create_auth_log
@@ -6,41 +8,87 @@ from face_utils import get_model_summary, recognize_face
 
 recognition_bp = Blueprint("recognition", __name__)
 
+AUTH_SAMPLE_LIMIT = 10
+MIN_AUTH_SAMPLE_MATCHES = 6
+
+
+def _best_metric_result(results):
+    face_results = [result for result in results if result.get("status") != "no_face"]
+    if not face_results:
+        return None
+    return min(face_results, key=lambda result: result.get("pca_distance", float("inf")))
+
+
+def recognize_from_samples(images):
+    sample_results = [recognize_face(image) for image in images[:AUTH_SAMPLE_LIMIT]]
+    face_results = [result for result in sample_results if result.get("status") != "no_face"]
+    granted_results = [result for result in face_results if result.get("matched") and result.get("user")]
+
+    if not face_results:
+        return {
+            "matched": False,
+            "status": "no_face",
+            "message": "No Face Detected in captured samples",
+            "bounding_box": None,
+            "sample_count": len(sample_results),
+            "valid_samples": 0,
+            "matched_samples": 0,
+        }
+
+    user_counts = Counter(result["user"]["id"] for result in granted_results)
+    if user_counts:
+        best_user_id, matched_samples = user_counts.most_common(1)[0]
+        if matched_samples >= MIN_AUTH_SAMPLE_MATCHES:
+            best_user_results = [result for result in granted_results if result["user"]["id"] == best_user_id]
+            best_result = min(best_user_results, key=lambda result: result.get("pca_distance", float("inf")))
+            return {
+                **best_result,
+                "message": "Face Samples Matched - Access Granted",
+                "sample_count": len(sample_results),
+                "valid_samples": len(face_results),
+                "matched_samples": matched_samples,
+            }
+
+    best_result = _best_metric_result(face_results) or face_results[0]
+    return {
+        **best_result,
+        "matched": False,
+        "status": "denied",
+        "message": "Face Samples Captured - Access Denied",
+        "user": None,
+        "sample_count": len(sample_results),
+        "valid_samples": len(face_results),
+        "matched_samples": len(granted_results),
+    }
+
 
 @recognition_bp.route("/authenticate")
 def authenticate():
-    if not session.get("admin_id") and not session.get("portal_user_id"):
-        flash("Please login before using face authentication.", "error")
-        return redirect(url_for("user_portal.user_login"))
-    return render_template("authenticate.html", model_summary=get_model_summary())
+    if not session.get("admin_id"):
+        flash("Admin login is required to scan and detect faces.", "error")
+        return redirect(url_for("admin.login"))
+    return render_template("authenticate.html", model_summary=get_model_summary(), scan_context="admin")
 
 
 @recognition_bp.route("/recognize", methods=["POST"])
 def recognize():
-    if not session.get("admin_id") and not session.get("portal_user_id"):
-        return jsonify({"success": False, "message": "Please login before using face authentication."}), 401
+    if not session.get("admin_id"):
+        return jsonify({"success": False, "message": "Admin login is required to scan and detect faces."}), 401
 
     payload = request.get_json(silent=True) or {}
+    images = payload.get("images")
     image = payload.get("image")
-    if not image:
-        return jsonify({"success": False, "message": "Image is required."}), 400
+    if not images and not image:
+        return jsonify({"success": False, "message": "At least one face sample is required."}), 400
+    if images and not isinstance(images, list):
+        return jsonify({"success": False, "message": "Face samples must be submitted as a list."}), 400
 
     try:
-        result = recognize_face(image)
-        portal_user_id = session.get("portal_user_id")
-        if (
-            portal_user_id
-            and not session.get("admin_id")
-            and result.get("matched")
-            and result.get("user", {}).get("id") != int(portal_user_id)
-        ):
-            result = {
-                **result,
-                "matched": False,
-                "status": "denied",
-                "message": "Face Detected - Access Denied",
-                "user": None,
-            }
+        result = recognize_from_samples(images) if images else recognize_face(image)
+        if result.get("status") == "granted":
+            result = {**result, "message": "Face Matched - User Data Found"}
+        elif result.get("status") == "denied":
+            result = {**result, "message": "Face Scanned - No Registered User Found"}
 
         if result["status"] == "granted":
             create_auth_log(

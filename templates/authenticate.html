@@ -6,12 +6,12 @@
 <section class="hero-card">
     <div>
         <div class="eyebrow">{{ "Admin Face Scan" if scan_context == "admin" else "Secure Face Authentication" }}</div>
-        <h2>{{ "Scan Registered User" if scan_context == "admin" else "Real-Time Face Recognition" }}</h2>
+        <h2>{{ "Scan Registered User" if scan_context == "admin" else "Sample-Based Face Authentication" }}</h2>
         <p class="helper-text">
             {% if scan_context == "admin" %}
             Scan a face from the admin portal to view the matched user's stored details.
             {% else %}
-            The system grants access only when both the PCA distance and normalized eye-distance thresholds are satisfied.
+            The system captures multiple webcam samples, then grants access only when the PCA and eye-distance checks agree.
             {% endif %}
         </p>
     </div>
@@ -33,30 +33,37 @@
 
 <section class="split-layout">
     <article class="panel">
-        <h3>Live Webcam</h3>
+        <h3>{{ "Face Scan" if scan_context == "admin" else "Webcam Samples" }}</h3>
         <div class="camera-wrapper">
             <video id="video" autoplay playsinline muted></video>
             <canvas id="overlayCanvas"></canvas>
         </div>
         <canvas id="captureCanvas" hidden></canvas>
         <div class="capture-toolbar">
-            <button type="button" id="recognizeBtn">Authenticate Face</button>
+            <button type="button" id="recognizeBtn">{{ "Scan Face" if scan_context == "admin" else "Take Samples" }}</button>
         </div>
     </article>
 
     <article class="panel">
-        <h3>Authentication Result</h3>
-        <div id="authMessage" class="alert info">Position your face in front of the webcam and start authentication.</div>
+        <h3>{{ "Scanned User Data" if scan_context == "admin" else "Authentication Result" }}</h3>
+        <div id="authMessage" class="alert info">
+            {% if scan_context == "admin" %}
+            Position a registered user's face in front of the webcam and scan to display their saved data.
+            {% else %}
+            Position your face in front of the webcam and take authentication samples.
+            {% endif %}
+        </div>
 
         <div class="metric-list">
             <div><span>Status</span><strong id="authStatus">Waiting</strong></div>
+            <div class="{{ 'hidden' if scan_context == 'admin' else '' }}"><span>Samples</span><strong id="authSamples">-</strong></div>
             <div><span>PCA Distance</span><strong id="authDistance">-</strong></div>
             <div><span>Eye Difference</span><strong id="authEyeDifference">-</strong></div>
             <div><span>Correlation</span><strong id="authCorrelation">-</strong></div>
         </div>
 
         <div id="userDetails" class="user-details hidden">
-            <h4>Authenticated User</h4>
+            <h4>{{ "Matched User" if scan_context == "admin" else "Authenticated User" }}</h4>
             <p><strong>Name:</strong> <span id="detailName"></span></p>
             <p><strong>User ID:</strong> <span id="detailIdentifier"></span></p>
             <p><strong>Email:</strong> <span id="detailEmail"></span></p>
@@ -64,5 +71,12 @@
     </article>
 </section>
 
-<script src="{{ url_for('static', filename='js/authenticate.js', v='20260429a') }}"></script>
+<script>
+    window.AUTH_CONFIG = {
+        mode: "{{ 'scan' if scan_context == 'admin' else 'samples' }}",
+        sampleCount: {{ 1 if scan_context == 'admin' else 10 }},
+        buttonLabel: "{{ 'Scan Face' if scan_context == 'admin' else 'Take Samples' }}"
+    };
+</script>
+<script src="{{ url_for('static', filename='js/authenticate.js', v='20260430c') }}"></script>
 {% endblock %}

@@ -78,10 +78,10 @@ def user_login():
             if user:
                 user_id = int(user["id"])
                 update_user_details(user_id, name, person_identifier, email)
-                message = "User details updated successfully."
+                message = "User details updated successfully. Take face samples next."
             else:
                 user_id = create_user(name, person_identifier, email)
-                message = "User registered successfully."
+                message = "User registered successfully. Take face samples next."
 
             session.pop("admin_id", None)
             session.pop("admin_username", None)
@@ -93,7 +93,7 @@ def user_login():
                 matched_name=name,
             )
             flash(message, "success")
-            return redirect(url_for("user_portal.profile"))
+            return redirect(url_for("user_portal.samples"))
         except Exception as exc:
             flash(str(exc), "error")
             return render_user_login(form_data)
@@ -101,17 +101,62 @@ def user_login():
     return render_user_login()
 
 
-@public_user_bp.route("/profile")
-def profile():
+def get_current_portal_user():
     user_id = session.get("portal_user_id")
     if not user_id:
-        flash("Please register first.", "error")
-        return redirect(url_for("user_portal.user_login"))
-
+        return None
     user = get_user_by_id(int(user_id))
     if not user:
         session.pop("portal_user_id", None)
-        flash("User record was not found. Please register again.", "error")
+    return user
+
+
+@public_user_bp.route("/samples", methods=["GET", "POST"])
+def samples():
+    user = get_current_portal_user()
+    if not user:
+        flash("Please register your details first.", "error")
+        return redirect(url_for("user_portal.user_login"))
+
+    if request.method == "POST":
+        captured_samples = parse_samples_from_form()
+        if len(captured_samples) < MIN_CAPTURE_SAMPLES:
+            flash(f"Take at least {MIN_CAPTURE_SAMPLES} face samples before saving.", "error")
+            return render_template(
+                "user_samples.html",
+                user=user,
+                min_samples=MIN_CAPTURE_SAMPLES,
+                max_samples=MIN_CAPTURE_SAMPLES,
+            )
+
+        try:
+            processed_samples = extract_samples_from_images(captured_samples, min_required=MIN_CAPTURE_SAMPLES)
+            replace_face_samples(int(user["id"]), processed_samples)
+            train_if_possible()
+            create_auth_log(
+                status="USER_SAMPLES",
+                message="User face samples saved successfully.",
+                matched_user_id=int(user["id"]),
+                matched_name=user["name"],
+            )
+            flash("Face samples saved successfully. Admin can now scan your face to view your data.", "success")
+            return redirect(url_for("user_portal.profile"))
+        except Exception as exc:
+            flash(str(exc), "error")
+
+    return render_template(
+        "user_samples.html",
+        user=user,
+        min_samples=MIN_CAPTURE_SAMPLES,
+        max_samples=MIN_CAPTURE_SAMPLES,
+    )
+
+
+@public_user_bp.route("/profile")
+def profile():
+    user = get_current_portal_user()
+    if not user:
+        flash("Please register first.", "error")
         return redirect(url_for("user_portal.user_login"))
 
     return render_template("user_profile.html", user=user, model_summary=get_model_summary())

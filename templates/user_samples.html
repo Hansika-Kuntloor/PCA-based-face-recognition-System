@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Take Face Samples{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div>
+        <div class="eyebrow">Face Data Capture</div>
+        <h2>Registration Successful</h2>
+        <p class="helper-text">Now take {{ min_samples }} webcam samples. These are saved as face data for admin scan lookup.</p>
+    </div>
+    <div class="metric-badge-group">
+        <div class="metric-badge">
+            <span>User</span>
+            <strong>{{ user.name }}</strong>
+        </div>
+        <div class="metric-badge">
+            <span>Saved Samples</span>
+            <strong>{{ user.sample_count }}</strong>
+        </div>
+    </div>
+</section>
+
+<section class="split-layout">
+    <article class="panel">
+        <h3>Registered Details</h3>
+        <div class="metric-list">
+            <div><span>Name</span><strong>{{ user.name }}</strong></div>
+            <div><span>User ID</span><strong>{{ user.person_identifier or "-" }}</strong></div>
+            <div><span>Email</span><strong>{{ user.email or "-" }}</strong></div>
+        </div>
+    </article>
+
+    <article class="panel">
+        <h3>Take Face Samples</h3>
+        <form method="post" id="userForm" class="form-stack">
+            <input type="hidden" name="samples_json" id="samplesJson" value="[]">
+
+            <div class="camera-wrapper">
+                <video id="video" autoplay playsinline muted></video>
+            </div>
+            <canvas id="captureCanvas" hidden></canvas>
+
+            <div class="capture-toolbar">
+                <button type="button" id="captureBtn">Take Sample</button>
+                <button type="button" id="clearBtn" class="ghost">Clear Samples</button>
+            </div>
+
+            <p class="helper-text">Take {{ min_samples }} clear front-facing samples, then save. Admin will scan your face later to view your details.</p>
+
+            <div class="counter-line">
+                Captured Samples: <strong id="sampleCounter">0</strong> / {{ min_samples }}
+            </div>
+            <div class="preview-strip" id="previewStrip"></div>
+
+            <button type="submit" class="secondary">Save Face Samples</button>
+        </form>
+    </article>
+</section>
+
+<script>
+    window.ADMIN_CAPTURE = {
+        minSamples: {{ min_samples }},
+        maxSamples: {{ max_samples }},
+        mode: "create"
+    };
+</script>
+<script src="{{ url_for('static', filename='js/admin_capture.js', v='20260430b') }}"></script>
+{% endblock %}

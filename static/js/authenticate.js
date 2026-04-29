@@ -5,6 +5,7 @@ const authElements = {
     recognizeBtn: document.getElementById("recognizeBtn"),
     authMessage: document.getElementById("authMessage"),
     authStatus: document.getElementById("authStatus"),
+    authSamples: document.getElementById("authSamples"),
     authDistance: document.getElementById("authDistance"),
     authEyeDifference: document.getElementById("authEyeDifference"),
     authCorrelation: document.getElementById("authCorrelation"),
@@ -15,6 +16,12 @@ const authElements = {
 };
 
 let authStream = null;
+const authConfig = {
+    mode: window.AUTH_CONFIG?.mode || "samples",
+    sampleCount: window.AUTH_CONFIG?.sampleCount || 10,
+    buttonLabel: window.AUTH_CONFIG?.buttonLabel || "Take Samples",
+};
+const AUTH_SAMPLE_DELAY_MS = 350;
 
 async function startRecognitionCamera() {
     if (!authElements.video) {
@@ -54,7 +61,7 @@ function captureAuthFrame() {
         authElements.captureCanvas.width,
         authElements.captureCanvas.height,
     );
-    return authElements.captureCanvas.toDataURL("image/png");
+    return authElements.captureCanvas.toDataURL("image/jpeg", 0.82);
 }
 
 function clearOverlay() {
@@ -98,15 +105,42 @@ function formatMetric(value, fallback = "Unavailable") {
     return value === null || value === undefined ? fallback : value;
 }
 
+function formatSampleMetric(data) {
+    if (!data.sample_count) {
+        return "-";
+    }
+    const validSamples = data.valid_samples ?? 0;
+    const matchedSamples = data.matched_samples ?? 0;
+    return `${matchedSamples}/${data.sample_count} matched, ${validSamples} valid`;
+}
+
 async function authenticateFace() {
     authElements.recognizeBtn.disabled = true;
-    authElements.recognizeBtn.textContent = "Authenticating...";
+    authElements.recognizeBtn.textContent = authConfig.mode === "scan" ? "Scanning..." : "Taking samples...";
 
     try {
+        const samples = [];
+        for (let index = 0; index < authConfig.sampleCount; index += 1) {
+            authElements.authMessage.className = "alert info";
+            authElements.authMessage.textContent = authConfig.mode === "scan"
+                ? "Scanning face..."
+                : `Taking sample ${index + 1} of ${authConfig.sampleCount}...`;
+            samples.push(captureAuthFrame());
+            if (index < authConfig.sampleCount - 1) {
+                await new Promise((resolve) => setTimeout(resolve, AUTH_SAMPLE_DELAY_MS));
+            }
+        }
+
+        authElements.recognizeBtn.textContent = "Authenticating...";
+        authElements.authMessage.className = "alert info";
+        authElements.authMessage.textContent = authConfig.mode === "scan"
+            ? "Checking scanned face..."
+            : "Checking captured samples...";
+
         const response = await fetch("/recognize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: captureAuthFrame() }),
+            body: JSON.stringify(authConfig.mode === "scan" ? { image: samples[0] } : { images: samples }),
         });
         const data = await response.json();
 
@@ -117,6 +151,9 @@ async function authenticateFace() {
         authElements.authMessage.textContent = data.message;
         authElements.authMessage.className = `alert ${data.matched ? "info" : "error"}`;
         authElements.authStatus.textContent = data.status;
+        if (authElements.authSamples) {
+            authElements.authSamples.textContent = formatSampleMetric(data);
+        }
         authElements.authDistance.textContent = data.pca_distance ?? "-";
         authElements.authEyeDifference.textContent = formatMetric(data.eye_difference);
         authElements.authCorrelation.textContent = data.correlation ?? "-";
@@ -127,11 +164,14 @@ async function authenticateFace() {
         authElements.authMessage.textContent = error.message;
         authElements.authMessage.className = "alert error";
         authElements.authStatus.textContent = "error";
+        if (authElements.authSamples) {
+            authElements.authSamples.textContent = "-";
+        }
         showUserDetails(null);
         clearOverlay();
     } finally {
         authElements.recognizeBtn.disabled = false;
-        authElements.recognizeBtn.textContent = "Authenticate Face";
+        authElements.recognizeBtn.textContent = authConfig.buttonLabel;
     }
 }
 

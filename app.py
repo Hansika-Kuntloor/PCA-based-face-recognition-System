@@ -58,17 +58,19 @@ def legacy_login():
 def legacy_dashboard():
     if session.get("admin_id"):
         return redirect(url_for("admin.dashboard"))
-    return redirect(url_for("recognition.authenticate"))
+    return redirect(url_for("user_portal.user_login"))
 
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_large_request(_error):
-    if request.path.startswith("/admin/users") or request.path.startswith("/user/login"):
+    if request.path.startswith("/admin/users") or request.path.startswith("/user/login") or request.path.startswith("/user/samples"):
         flash(
             "Captured samples were too large to upload. The app now compresses them, but please try again with a fresh capture.",
             "error",
         )
-        fallback = "user_portal.user_login" if request.path.startswith("/user/login") else "user_admin.list_users"
+        fallback = "user_portal.samples" if request.path.startswith("/user/samples") else "user_admin.list_users"
+        if request.path.startswith("/user/login"):
+            fallback = "user_portal.user_login"
         return redirect(request.referrer or url_for(fallback))
     return "Request entity too large.", 413
 

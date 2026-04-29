@@ -6,11 +6,11 @@
 <section class="hero-card">
     <div>
         <div class="eyebrow">User Portal</div>
-        <h2>Registration Successful</h2>
-        <p class="helper-text">Your profile and processed face samples are now available in the admin portal.</p>
+        <h2>Face Data Saved</h2>
+        <p class="helper-text">Your details and face samples are saved. Admin can scan your face from the admin portal to view this data.</p>
     </div>
     <div class="auth-actions">
-        <a href="{{ url_for('recognition.authenticate') }}" class="link-button">Authenticate Face</a>
+        <a href="{{ url_for('user_portal.samples') }}" class="link-button">Retake Samples</a>
         <a href="{{ url_for('user_portal.user_logout') }}" class="link-button danger-link">User Logout</a>
     </div>
 </section>
@@ -27,12 +27,11 @@
     </article>
 
     <article class="panel">
-        <h3>Recognition Model</h3>
+        <h3>Face Data Status</h3>
         <div class="metric-list">
-            <div><span>Model Ready</span><strong>{{ "Yes" if model_summary.available else "No" }}</strong></div>
-            <div><span>PCA Threshold</span><strong>{{ model_summary.distance_threshold }}</strong></div>
-            <div><span>Eye Threshold</span><strong>{{ model_summary.eye_threshold }}</strong></div>
-            <div><span>Samples Used</span><strong>{{ model_summary.metrics.get("samples", 0) }}</strong></div>
+            <div><span>Samples Required</span><strong>10</strong></div>
+            <div><span>Saved Samples</span><strong>{{ user.sample_count }}</strong></div>
+            <div><span>Admin Scan Ready</span><strong>{{ "Yes" if user.sample_count >= 10 and model_summary.available else "No" }}</strong></div>
         </div>
     </article>
 </section>

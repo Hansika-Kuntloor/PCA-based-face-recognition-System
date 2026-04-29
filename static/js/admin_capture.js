@@ -102,7 +102,7 @@ function bindCaptureEvents() {
         ) {
             event.preventDefault();
             window.alert(
-                `Capture at least ${window.ADMIN_CAPTURE.minSamples} samples before creating a user.`,
+                `Capture at least ${window.ADMIN_CAPTURE.minSamples} samples before saving.`,
             );
         }
         if (
