@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Authentication Logs{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div>
+        <div class="eyebrow">Authentication Monitoring</div>
+        <h2>Authentication Logs</h2>
+        <p class="helper-text">Review successful, failed, and no-face detection attempts.</p>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>Matched User</th>
+                    <th>PCA Distance</th>
+                    <th>Eye Difference</th>
+                    <th>Correlation</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.created_at }}</td>
+                    <td><span class="status-chip {{ log.status|lower }}">{{ log.status }}</span></td>
+                    <td>{{ log.matched_name or "-" }}</td>
+                    <td>{{ log.pca_distance if log.pca_distance is not none else "-" }}</td>
+                    <td>{{ log.eye_difference if log.eye_difference is not none else "-" }}</td>
+                    <td>{{ log.correlation if log.correlation is not none else "-" }}</td>
+                    <td>{{ log.message }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7">No logs available yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

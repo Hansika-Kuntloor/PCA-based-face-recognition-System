@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div>
+        <div class="eyebrow">Admin User Management</div>
+        <h2>Registered Users</h2>
+        <p class="helper-text">Add, update, or delete users and maintain only processed face samples in the system.</p>
+    </div>
+    <a href="{{ url_for('user_admin.create') }}" class="link-button secondary-link">Add New User</a>
+</section>
+
+<section class="panel">
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>User ID</th>
+                    <th>Email</th>
+                    <th>Samples</th>
+                    <th>Avg Eye Distance</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ user.name }}</td>
+                    <td>{{ user.person_identifier or "-" }}</td>
+                    <td>{{ user.email or "-" }}</td>
+                    <td>{{ user.sample_count }}</td>
+                    <td>{{ "%.4f"|format(user.average_eye_distance) }}</td>
+                    <td class="actions-cell">
+                        <a href="{{ url_for('user_admin.edit', user_id=user.id) }}" class="mini-link">Edit</a>
+                        <form method="post" action="{{ url_for('user_admin.delete', user_id=user.id) }}" onsubmit="return confirm('Delete {{ user.name }} and all processed face samples?');">
+                            <button type="submit" class="danger mini-button">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7">No users registered yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

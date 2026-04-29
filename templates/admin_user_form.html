@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}{{ "Add User" if mode == "create" else "Edit User" }}{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div>
+        <div class="eyebrow">User Registration Module</div>
+        <h2>{{ "Add New User" if mode == "create" else "Update User" }}</h2>
+        <p class="helper-text">
+            Capture {{ min_samples }} to {{ max_samples }} webcam samples. The system stores processed PCA-ready vectors instead of raw images where possible.
+        </p>
+    </div>
+    <a href="{{ url_for('user_admin.list_users') }}" class="link-button">Back to Users</a>
+</section>
+
+<section class="split-layout">
+    <article class="panel">
+        <form method="post" id="userForm" class="form-stack">
+            <label>
+                Full Name
+                <input type="text" name="name" value="{{ user.name if user else '' }}" placeholder="Enter full name" required>
+            </label>
+
+            <label>
+                User ID
+                <input type="text" name="person_identifier" value="{{ user.person_identifier if user else '' }}" placeholder="Enter unique user ID">
+            </label>
+
+            <label>
+                Email
+                <input type="email" name="email" value="{{ user.email if user else '' }}" placeholder="Enter email address">
+            </label>
+
+            <input type="hidden" name="samples_json" id="samplesJson" value="[]">
+
+            <button type="submit" class="secondary">{{ "Create User" if mode == "create" else "Save Changes" }}</button>
+        </form>
+    </article>
+
+    <article class="panel">
+        <h3>Webcam Capture</h3>
+        <div class="camera-wrapper">
+            <video id="video" autoplay playsinline muted></video>
+        </div>
+        <canvas id="captureCanvas" hidden></canvas>
+
+        <div class="capture-toolbar">
+            <button type="button" id="captureBtn">Capture Sample</button>
+            <button type="button" id="clearBtn" class="ghost">Clear Samples</button>
+        </div>
+
+        <p class="helper-text">
+            {% if mode == "edit" %}
+            Leave samples empty if you only want to update the text details. Capture new samples only when you want to replace the stored feature set.
+            {% else %}
+            Capture at least {{ min_samples }} samples. Slight pose and lighting changes help the PCA model become more robust.
+            {% endif %}
+        </p>
+
+        <div class="counter-line">
+            Captured Samples: <strong id="sampleCounter">0</strong>
+        </div>
+        <div class="preview-strip" id="previewStrip"></div>
+    </article>
+</section>
+
+<script>
+    window.ADMIN_CAPTURE = {
+        minSamples: {{ min_samples }},
+        maxSamples: {{ max_samples }},
+        mode: "{{ mode }}"
+    };
+</script>
+<script src="{{ url_for('static', filename='js/admin_capture.js', v='20260429a') }}"></script>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div>
+        <div class="eyebrow">Principal Component Analysis - Eigenfaces</div>
+        <h2>Admin Dashboard</h2>
+        <p class="helper-text">Manage users, retrain the model, and monitor successful or failed authentication attempts.</p>
+    </div>
+
+    <form method="post" action="{{ url_for('admin.train') }}">
+        <button type="submit" class="secondary">Train / Refresh Model</button>
+    </form>
+</section>
+
+<section class="card-grid">
+    <article class="panel stat-panel">
+        <span>Total Users</span>
+        <strong>{{ users|length }}</strong>
+    </article>
+    <article class="panel stat-panel">
+        <span>Model Ready</span>
+        <strong>{{ "Yes" if model_summary.available else "No" }}</strong>
+    </article>
+    <article class="panel stat-panel">
+        <span>Distance Threshold</span>
+        <strong>{{ model_summary.distance_threshold }}</strong>
+    </article>
+    <article class="panel stat-panel">
+        <span>Eye Threshold</span>
+        <strong>{{ model_summary.eye_threshold }}</strong>
+    </article>
+</section>
+
+<section class="card-grid">
+    <article class="panel">
+        <h3>Model Metrics</h3>
+        <div class="metric-list">
+            <div><span>Samples Used</span><strong>{{ model_summary.metrics.get("samples", 0) }}</strong></div>
+            <div><span>Accuracy</span><strong>{{ model_summary.metrics.get("accuracy", 0) }}%</strong></div>
+            <div><span>False Accept Rate</span><strong>{{ model_summary.metrics.get("false_accept_rate", 0) }}%</strong></div>
+            <div><span>False Reject Rate</span><strong>{{ model_summary.metrics.get("false_reject_rate", 0) }}%</strong></div>
+        </div>
+    </article>
+
+    <article class="panel">
+        <h3>Recent Authentication Logs</h3>
+        <div class="compact-log-list">
+            {% for log in logs %}
+            <div class="compact-log-item">
+                <span class="status-chip {{ log.status|lower }}">{{ log.status }}</span>
+                <strong>{{ log.matched_name or "Unknown User" }}</strong>
+                <small>{{ log.created_at }}</small>
+            </div>
+            {% else %}
+            <p class="helper-text">No authentication logs yet.</p>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+{% endblock %}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI-Based Secure Face Recognition System{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body class="app-body">
+    <header class="topbar">
+        <div>
+            <div class="eyebrow">Admin-Controlled Authentication Framework</div>
+            <h1 class="topbar-title">AI-Based Secure Face Recognition System</h1>
+        </div>
+        <nav class="nav-links">
+            <a href="{{ url_for('recognition.authenticate') }}" class="link-button">Authenticate</a>
+            {% if admin_logged_in %}
+            <a href="{{ url_for('admin.dashboard') }}" class="link-button">Dashboard</a>
+            <a href="{{ url_for('user_admin.list_users') }}" class="link-button">Users</a>
+            <a href="{{ url_for('admin.logs') }}" class="link-button">Logs</a>
+            <a href="{{ url_for('admin.logout') }}" class="link-button danger-link">Logout</a>
+            {% elif admin_exists %}
+            <a href="{{ url_for('admin.login') }}" class="link-button secondary-link">Admin Login</a>
+            {% else %}
+            <a href="{{ url_for('admin.setup') }}" class="link-button secondary-link">Create Admin</a>
+            {% endif %}
+        </nav>
+    </header>
+
+    <main class="page-shell">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert {{ 'error' if category == 'error' else 'info' }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

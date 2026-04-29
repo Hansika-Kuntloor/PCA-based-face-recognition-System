@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Face Authentication{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div>
+        <div class="eyebrow">Secure Face Authentication</div>
+        <h2>Real-Time Face Recognition</h2>
+        <p class="helper-text">The system grants access only when both the PCA distance and normalized eye-distance thresholds are satisfied.</p>
+    </div>
+    <div class="metric-badge-group">
+        <div class="metric-badge">
+            <span>Model Ready</span>
+            <strong>{{ "Yes" if model_summary.available else "No" }}</strong>
+        </div>
+        <div class="metric-badge">
+            <span>PCA Threshold</span>
+            <strong>{{ model_summary.distance_threshold }}</strong>
+        </div>
+        <div class="metric-badge">
+            <span>Eye Threshold</span>
+            <strong>{{ model_summary.eye_threshold }}</strong>
+        </div>
+    </div>
+</section>
+
+<section class="split-layout">
+    <article class="panel">
+        <h3>Live Webcam</h3>
+        <div class="camera-wrapper">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="overlayCanvas"></canvas>
+        </div>
+        <canvas id="captureCanvas" hidden></canvas>
+        <div class="capture-toolbar">
+            <button type="button" id="recognizeBtn">Authenticate Face</button>
+        </div>
+    </article>
+
+    <article class="panel">
+        <h3>Authentication Result</h3>
+        <div id="authMessage" class="alert info">Position your face in front of the webcam and start authentication.</div>
+
+        <div class="metric-list">
+            <div><span>Status</span><strong id="authStatus">Waiting</strong></div>
+            <div><span>PCA Distance</span><strong id="authDistance">-</strong></div>
+            <div><span>Eye Difference</span><strong id="authEyeDifference">-</strong></div>
+            <div><span>Correlation</span><strong id="authCorrelation">-</strong></div>
+        </div>
+
+        <div id="userDetails" class="user-details hidden">
+            <h4>Authenticated User</h4>
+            <p><strong>Name:</strong> <span id="detailName"></span></p>
+            <p><strong>User ID:</strong> <span id="detailIdentifier"></span></p>
+            <p><strong>Email:</strong> <span id="detailEmail"></span></p>
+        </div>
+    </article>
+</section>
+
+<script src="{{ url_for('static', filename='js/authenticate.js', v='20260429a') }}"></script>
+{% endblock %}

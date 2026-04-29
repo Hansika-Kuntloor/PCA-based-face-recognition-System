@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Setup{% endblock %}
+
+{% block content %}
+<section class="auth-wrap">
+    <div class="auth-card">
+        <div class="eyebrow">First-Time Setup</div>
+        <h2>Create Admin Account</h2>
+        <p class="helper-text">Set up the primary admin account for the secure face recognition system.</p>
+
+        <form method="post" class="auth-form">
+            <label>
+                Admin Username
+                <input type="text" name="username" placeholder="Create admin username" required>
+            </label>
+
+            <label>
+                Password
+                <input type="password" name="password" placeholder="Create password" required>
+            </label>
+
+            <label>
+                Confirm Password
+                <input type="password" name="confirm_password" placeholder="Re-enter password" required>
+            </label>
+
+            <button type="submit">Create Admin</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

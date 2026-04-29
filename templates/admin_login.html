@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login{% endblock %}
+
+{% block content %}
+<section class="auth-wrap">
+    <div class="auth-card">
+        <div class="eyebrow">Admin Portal</div>
+        <h2>Secure Admin Login</h2>
+        <p class="helper-text">Log in to manage users, train Eigenfaces, and inspect authentication logs.</p>
+
+        <form method="post" class="auth-form">
+            <label>
+                Username
+                <input type="text" name="username" placeholder="Enter admin username" required>
+            </label>
+
+            <label>
+                Password
+                <input type="password" name="password" placeholder="Enter admin password" required>
+            </label>
+
+            <button type="submit">Login</button>
+        </form>
+    </div>
+</section>
+{% endblock %}
