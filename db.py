@@ -261,6 +261,58 @@ def get_user_by_name(name: str) -> Optional[Dict[str, Any]]:
     return _user_from_row(row)
 
 
+def find_user_by_login_details(name: str, person_identifier: str, email: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    row = None
+
+    if person_identifier:
+        row = conn.execute(
+            """
+            SELECT
+                u.*,
+                COUNT(fs.id) AS sample_count
+            FROM users u
+            LEFT JOIN face_samples fs ON fs.user_id = u.id
+            WHERE lower(u.person_identifier) = lower(?)
+            GROUP BY u.id
+            """,
+            (person_identifier,),
+        ).fetchone()
+
+    if row is None and email:
+        row = conn.execute(
+            """
+            SELECT
+                u.*,
+                COUNT(fs.id) AS sample_count
+            FROM users u
+            LEFT JOIN face_samples fs ON fs.user_id = u.id
+            WHERE lower(u.email) = lower(?)
+            GROUP BY u.id
+            """,
+            (email,),
+        ).fetchone()
+
+    if row is None and name:
+        row = conn.execute(
+            """
+            SELECT
+                u.*,
+                COUNT(fs.id) AS sample_count
+            FROM users u
+            LEFT JOIN face_samples fs ON fs.user_id = u.id
+            WHERE lower(u.name) = lower(?)
+            GROUP BY u.id
+            """,
+            (name,),
+        ).fetchone()
+
+    conn.close()
+    if not row:
+        return None
+    return _user_from_row(row)
+
+
 def create_user(name: str, person_identifier: str, email: str) -> int:
     conn = get_connection()
     with conn:
@@ -348,6 +400,18 @@ def delete_user_by_id(user_id: int) -> bool:
     return bool(deleted)
 
 
+def _valid_eye_distances(samples: List[Dict[str, Any]]) -> List[float]:
+    valid_values: List[float] = []
+    for sample in samples:
+        try:
+            value = float(sample["eye_distance"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if 0.05 <= value <= 0.8:
+            valid_values.append(value)
+    return valid_values
+
+
 def replace_face_samples(user_id: int, samples: List[Dict[str, Any]]) -> None:
     conn = get_connection()
     with conn:
@@ -361,9 +425,10 @@ def replace_face_samples(user_id: int, samples: List[Dict[str, Any]]) -> None:
                 (user_id, index, sample["feature_blob"], sample["eye_distance"]),
             )
 
+        valid_eye_values = _valid_eye_distances(samples)
         average_eye_distance = 0.0
-        if samples:
-            average_eye_distance = sum(float(sample["eye_distance"]) for sample in samples) / len(samples)
+        if valid_eye_values:
+            average_eye_distance = sum(valid_eye_values) / len(valid_eye_values)
         conn.execute(
             """
             UPDATE users

@@ -10,9 +10,12 @@
         <p class="helper-text">Manage users, retrain the model, and monitor successful or failed authentication attempts.</p>
     </div>
 
-    <form method="post" action="{{ url_for('admin.train') }}">
-        <button type="submit" class="secondary">Train / Refresh Model</button>
-    </form>
+    <div class="auth-actions">
+        <a href="{{ url_for('admin.scan') }}" class="link-button">Scan Face</a>
+        <form method="post" action="{{ url_for('admin.train') }}">
+            <button type="submit" class="secondary">Train / Refresh Model</button>
+        </form>
+    </div>
 </section>
 
 <section class="card-grid">

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}User Registration{% endblock %}
+
+{% block content %}
+<section class="portal-auth-panel">
+    <div class="portal-auth-copy">
+        <div class="eyebrow">User Portal</div>
+        <h2>User Registration</h2>
+        <p class="helper-text">Register your profile details to continue into the system.</p>
+        <div class="portal-note-list">
+            <span>Admin can view your saved profile</span>
+            <span>Use User ID or email for future access</span>
+        </div>
+    </div>
+
+    <div class="portal-form-shell">
+        <form method="post" id="userForm" class="form-stack">
+            <label>
+                Full Name
+                <input type="text" name="name" value="{{ form_data.name or '' }}" placeholder="Enter full name" required>
+            </label>
+
+            <label>
+                User ID
+                <input type="text" name="person_identifier" value="{{ form_data.person_identifier or '' }}" placeholder="Enter unique user ID">
+            </label>
+
+            <label>
+                Email
+                <input type="email" name="email" value="{{ form_data.email or '' }}" placeholder="Enter email address">
+            </label>
+
+            <button type="submit" class="secondary">Register</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

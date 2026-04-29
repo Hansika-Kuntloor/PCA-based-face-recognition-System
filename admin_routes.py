@@ -56,6 +56,7 @@ def login():
         admin = get_admin_by_username(username)
 
         if admin and check_password_hash(admin["password_hash"], password):
+            session.pop("portal_user_id", None)
             session["admin_id"] = admin["id"]
             session["admin_username"] = admin["username"]
             create_auth_log(
@@ -96,6 +97,12 @@ def dashboard():
         logs=logs,
         model_summary=model_summary,
     )
+
+
+@admin_bp.route("/scan")
+@admin_required
+def scan():
+    return render_template("authenticate.html", model_summary=get_model_summary(), scan_context="admin")
 
 
 @admin_bp.route("/train", methods=["POST"])

@@ -4,9 +4,9 @@ from flask import Flask, flash, redirect, request, session, url_for
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from admin_routes import admin_bp
-from db import count_admins, get_admin_by_id, init_db
+from db import count_admins, get_admin_by_id, get_user_by_id, init_db
 from recognition_routes import recognition_bp
-from user_routes import user_bp
+from user_routes import public_user_bp, user_bp
 
 
 SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "secure-face-recognition-secret")
@@ -26,11 +26,16 @@ def startup() -> None:
 @app.context_processor
 def inject_global_template_data():
     admin = None
+    portal_user = None
     if session.get("admin_id"):
         admin = get_admin_by_id(int(session["admin_id"]))
+    if session.get("portal_user_id"):
+        portal_user = get_user_by_id(int(session["portal_user_id"]))
     return {
         "current_admin": admin,
+        "current_portal_user": portal_user,
         "admin_logged_in": admin is not None,
+        "user_logged_in": portal_user is not None,
         "admin_exists": count_admins() > 0,
     }
 
@@ -41,7 +46,7 @@ def root():
         return redirect(url_for("admin.setup"))
     if session.get("admin_id"):
         return redirect(url_for("admin.dashboard"))
-    return redirect(url_for("recognition.authenticate"))
+    return redirect(url_for("user_portal.user_login"))
 
 
 @app.route("/login")
@@ -58,17 +63,19 @@ def legacy_dashboard():
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_large_request(_error):
-    if request.path.startswith("/admin/users"):
+    if request.path.startswith("/admin/users") or request.path.startswith("/user/login"):
         flash(
             "Captured samples were too large to upload. The app now compresses them, but please try again with a fresh capture.",
             "error",
         )
-        return redirect(request.referrer or url_for("user_admin.list_users"))
+        fallback = "user_portal.user_login" if request.path.startswith("/user/login") else "user_admin.list_users"
+        return redirect(request.referrer or url_for(fallback))
     return "Request entity too large.", 413
 
 
 app.register_blueprint(admin_bp)
 app.register_blueprint(user_bp)
+app.register_blueprint(public_user_bp)
 app.register_blueprint(recognition_bp)
 
 

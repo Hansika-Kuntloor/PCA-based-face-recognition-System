@@ -13,16 +13,17 @@
             <h1 class="topbar-title">AI-Based Secure Face Recognition System</h1>
         </div>
         <nav class="nav-links">
-            <a href="{{ url_for('recognition.authenticate') }}" class="link-button">Authenticate</a>
             {% if admin_logged_in %}
-            <a href="{{ url_for('admin.dashboard') }}" class="link-button">Dashboard</a>
-            <a href="{{ url_for('user_admin.list_users') }}" class="link-button">Users</a>
-            <a href="{{ url_for('admin.logs') }}" class="link-button">Logs</a>
-            <a href="{{ url_for('admin.logout') }}" class="link-button danger-link">Logout</a>
-            {% elif admin_exists %}
+            <a href="{{ url_for('admin.logout') }}" class="link-button danger-link">Admin Logout</a>
+            {% elif user_logged_in %}
+            <a href="{{ url_for('user_portal.user_logout') }}" class="link-button danger-link">User Logout</a>
+            {% else %}
+            <a href="{{ url_for('user_portal.user_login') }}" class="link-button secondary-link">User Register</a>
+            {% if admin_exists %}
             <a href="{{ url_for('admin.login') }}" class="link-button secondary-link">Admin Login</a>
             {% else %}
             <a href="{{ url_for('admin.setup') }}" class="link-button secondary-link">Create Admin</a>
+            {% endif %}
             {% endif %}
         </nav>
     </header>

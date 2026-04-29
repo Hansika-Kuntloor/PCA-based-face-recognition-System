@@ -13,6 +13,7 @@ from db import (
     get_all_users,
     get_face_samples_for_user,
     replace_face_samples,
+    update_user_average_eye_distance,
     update_user_feature_summary,
 )
 
@@ -32,8 +33,6 @@ DEFAULT_DISTANCE_THRESHOLD = 520.0
 DEFAULT_EYE_THRESHOLD = 0.08
 DEFAULT_CORRELATION_THRESHOLD = 0.08
 MIN_CORRELATION_WITH_EYE = 0.1
-MIN_CORRELATION_WITHOUT_EYE = 0.25
-STRICT_EYE_THRESHOLD_CAP = 0.12
 
 
 if mp is not None:  # pragma: no branch - simple initialization
@@ -189,6 +188,43 @@ def is_valid_eye_distance(value: Optional[float]) -> bool:
     except (TypeError, ValueError):
         return False
     return 0.05 <= numeric_value <= 0.8
+
+
+def valid_eye_distances(values: List[float]) -> List[float]:
+    return [float(value) for value in values if is_valid_eye_distance(value)]
+
+
+def passes_match_rules(
+    best_distance: float,
+    second_best_distance: float,
+    eye_difference: Optional[float],
+    correlation: float,
+    profile: Dict[str, Any],
+    distance_threshold: float,
+    eye_threshold: float,
+    distance_margin: float,
+    correlation_threshold: float,
+) -> bool:
+    required_margin = max(distance_margin, best_distance * 0.08)
+    margin_condition = second_best_distance == float("inf") or (second_best_distance - best_distance) >= required_margin
+    effective_distance_limit = max(distance_threshold, float(profile.get("distance_limit", distance_threshold)))
+    profile_correlation_floor = float(profile.get("correlation_floor", correlation_threshold))
+    correlation_floor = max(correlation_threshold, MIN_CORRELATION_WITH_EYE, profile_correlation_floor)
+    eye_condition = eye_difference is None or eye_difference <= eye_threshold
+
+    # Eye detection can fail or drift on webcam frames. A very strong PCA/correlation
+    # match should still identify an already-enrolled user instead of false rejecting.
+    strong_appearance_condition = (
+        correlation >= max(correlation_floor + 0.05, 0.45)
+        or best_distance <= effective_distance_limit * 0.82
+    )
+
+    return (
+        margin_condition
+        and best_distance <= effective_distance_limit
+        and correlation >= correlation_floor
+        and (eye_condition or strong_appearance_condition)
+    )
 
 
 def extract_samples_from_images(images: List[str], min_required: int = MIN_CAPTURE_SAMPLES) -> List[Dict[str, Any]]:
@@ -406,30 +442,17 @@ def _evaluate_model(
             elif candidate_distance < second_best_distance:
                 second_best_distance = candidate_distance
 
-        eye_available = best_eye_difference is not None
-        strict_eye_threshold = min(eye_threshold, STRICT_EYE_THRESHOLD_CAP)
-        eye_condition = eye_available and best_eye_difference <= strict_eye_threshold
-        margin_condition = second_best_distance == float("inf") or (second_best_distance - best_distance) >= distance_margin
         candidate_profile = user_profiles.get(best_user_id) if best_user_id is not None else None
-        profile_distance_limit = candidate_profile["distance_limit"] if candidate_profile else distance_threshold
-        profile_correlation_floor = candidate_profile["correlation_floor"] if candidate_profile else correlation_threshold
-        profile_requires_eye = (
-            bool(candidate_profile)
-            and is_valid_eye_distance(float(candidate_profile["average_eye_distance"]))
-        )
-        matched = margin_condition and (
-            (
-                eye_condition
-                and best_distance <= min(distance_threshold, profile_distance_limit)
-                and best_correlation >= max(correlation_threshold, MIN_CORRELATION_WITH_EYE, profile_correlation_floor)
-            )
-            or (
-                (not profile_requires_eye)
-                and
-                (not eye_available)
-                and best_distance <= min(distance_threshold, profile_distance_limit)
-                and best_correlation >= max(correlation_threshold + 0.02, MIN_CORRELATION_WITHOUT_EYE, profile_correlation_floor)
-            )
+        matched = bool(candidate_profile) and passes_match_rules(
+            best_distance=best_distance,
+            second_best_distance=second_best_distance,
+            eye_difference=best_eye_difference,
+            correlation=best_correlation,
+            profile=candidate_profile,
+            distance_threshold=distance_threshold,
+            eye_threshold=eye_threshold,
+            distance_margin=distance_margin,
+            correlation_threshold=correlation_threshold,
         )
         if matched and best_user_id == true_user_id:
             correct += 1
@@ -467,7 +490,8 @@ def train_model_from_database() -> Dict[str, Any]:
         user_eye_distances = [eye_distances[index] for index in indices]
         user_details = user_lookup[user_id]
         mean_projection = np.mean(user_samples, axis=0)
-        average_eye_distance = float(np.mean(user_eye_distances))
+        valid_user_eye_distances = valid_eye_distances(user_eye_distances)
+        average_eye_distance = float(np.mean(valid_user_eye_distances)) if valid_user_eye_distances else 0.0
         user_sample_distances = [float(np.linalg.norm(sample - mean_projection)) for sample in user_samples]
         user_sample_correlations = [safe_correlation(sample, mean_projection) for sample in user_samples]
         distance_limit = float(max(user_sample_distances) * 1.1) if user_sample_distances else float("inf")
@@ -489,6 +513,7 @@ def train_model_from_database() -> Dict[str, Any]:
             "distance_limit": distance_limit,
             "correlation_floor": correlation_floor,
         }
+        update_user_average_eye_distance(user_id, average_eye_distance)
         update_user_feature_summary(
             user_id,
             {
@@ -638,29 +663,16 @@ def recognize_face(image_data: str) -> Dict[str, Any]:
     eye_threshold = float(model.get("eye_threshold", DEFAULT_EYE_THRESHOLD))
     distance_margin = float(model.get("distance_margin", 0.25))
     correlation_threshold = float(model.get("correlation_threshold", DEFAULT_CORRELATION_THRESHOLD))
-    eye_available = best_match["eye_difference"] is not None
-    strict_eye_threshold = min(eye_threshold, STRICT_EYE_THRESHOLD_CAP)
-    eye_condition = eye_available and best_match["eye_difference"] <= strict_eye_threshold
-    margin_condition = second_best_distance == float("inf") or (second_best_distance - best_match["pca_distance"]) >= distance_margin
-    profile_distance_limit = float(best_match.get("distance_limit", distance_threshold))
-    profile_correlation_floor = float(best_match.get("correlation_floor", correlation_threshold))
-    profile_requires_eye = is_valid_eye_distance(
-        float(model["user_profiles"][best_match["user_id"]]["average_eye_distance"])
-    )
-
-    matched = margin_condition and (
-        (
-            eye_condition
-            and best_match["pca_distance"] <= min(distance_threshold, profile_distance_limit)
-            and best_match["correlation"] >= max(correlation_threshold, MIN_CORRELATION_WITH_EYE, profile_correlation_floor)
-        )
-        or (
-            (not profile_requires_eye)
-            and
-            (not eye_available)
-            and best_match["pca_distance"] <= min(distance_threshold, profile_distance_limit)
-            and best_match["correlation"] >= max(correlation_threshold + 0.02, MIN_CORRELATION_WITHOUT_EYE, profile_correlation_floor)
-        )
+    matched = passes_match_rules(
+        best_distance=best_match["pca_distance"],
+        second_best_distance=second_best_distance,
+        eye_difference=best_match["eye_difference"],
+        correlation=best_match["correlation"],
+        profile=model["user_profiles"][best_match["user_id"]],
+        distance_threshold=distance_threshold,
+        eye_threshold=eye_threshold,
+        distance_margin=distance_margin,
+        correlation_threshold=correlation_threshold,
     )
 
     if matched:

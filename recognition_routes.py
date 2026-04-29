@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
 
 from db import create_auth_log
 from face_utils import get_model_summary, recognize_face
@@ -9,11 +9,17 @@ recognition_bp = Blueprint("recognition", __name__)
 
 @recognition_bp.route("/authenticate")
 def authenticate():
+    if not session.get("admin_id") and not session.get("portal_user_id"):
+        flash("Please login before using face authentication.", "error")
+        return redirect(url_for("user_portal.user_login"))
     return render_template("authenticate.html", model_summary=get_model_summary())
 
 
 @recognition_bp.route("/recognize", methods=["POST"])
 def recognize():
+    if not session.get("admin_id") and not session.get("portal_user_id"):
+        return jsonify({"success": False, "message": "Please login before using face authentication."}), 401
+
     payload = request.get_json(silent=True) or {}
     image = payload.get("image")
     if not image:
@@ -21,6 +27,21 @@ def recognize():
 
     try:
         result = recognize_face(image)
+        portal_user_id = session.get("portal_user_id")
+        if (
+            portal_user_id
+            and not session.get("admin_id")
+            and result.get("matched")
+            and result.get("user", {}).get("id") != int(portal_user_id)
+        ):
+            result = {
+                **result,
+                "matched": False,
+                "status": "denied",
+                "message": "Face Detected - Access Denied",
+                "user": None,
+            }
+
         if result["status"] == "granted":
             create_auth_log(
                 status="GRANTED",

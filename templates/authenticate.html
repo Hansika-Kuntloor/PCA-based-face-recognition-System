@@ -5,9 +5,15 @@
 {% block content %}
 <section class="hero-card">
     <div>
-        <div class="eyebrow">Secure Face Authentication</div>
-        <h2>Real-Time Face Recognition</h2>
-        <p class="helper-text">The system grants access only when both the PCA distance and normalized eye-distance thresholds are satisfied.</p>
+        <div class="eyebrow">{{ "Admin Face Scan" if scan_context == "admin" else "Secure Face Authentication" }}</div>
+        <h2>{{ "Scan Registered User" if scan_context == "admin" else "Real-Time Face Recognition" }}</h2>
+        <p class="helper-text">
+            {% if scan_context == "admin" %}
+            Scan a face from the admin portal to view the matched user's stored details.
+            {% else %}
+            The system grants access only when both the PCA distance and normalized eye-distance thresholds are satisfied.
+            {% endif %}
+        </p>
     </div>
     <div class="metric-badge-group">
         <div class="metric-badge">
