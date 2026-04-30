@@ -1,4 +1,5 @@
 from collections import Counter
+import math
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
 
@@ -9,7 +10,8 @@ from face_utils import get_model_summary, recognize_face
 recognition_bp = Blueprint("recognition", __name__)
 
 AUTH_SAMPLE_LIMIT = 10
-MIN_AUTH_SAMPLE_MATCHES = 6
+MIN_AUTH_SAMPLE_MATCHES = 4
+AUTH_MATCH_RATIO = 0.6
 
 
 def _best_metric_result(results):
@@ -17,6 +19,11 @@ def _best_metric_result(results):
     if not face_results:
         return None
     return min(face_results, key=lambda result: result.get("pca_distance", float("inf")))
+
+
+def _required_sample_matches(total_samples: int) -> int:
+    limited_samples = max(1, min(total_samples, AUTH_SAMPLE_LIMIT))
+    return max(MIN_AUTH_SAMPLE_MATCHES, math.ceil(limited_samples * AUTH_MATCH_RATIO))
 
 
 def recognize_from_samples(images):
@@ -38,7 +45,7 @@ def recognize_from_samples(images):
     user_counts = Counter(result["user"]["id"] for result in granted_results)
     if user_counts:
         best_user_id, matched_samples = user_counts.most_common(1)[0]
-        if matched_samples >= MIN_AUTH_SAMPLE_MATCHES:
+        if matched_samples >= _required_sample_matches(len(sample_results)):
             best_user_results = [result for result in granted_results if result["user"]["id"] == best_user_id]
             best_result = min(best_user_results, key=lambda result: result.get("pca_distance", float("inf")))
             return {

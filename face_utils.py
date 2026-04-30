@@ -76,13 +76,71 @@ def preprocess_face(face_bgr: np.ndarray) -> np.ndarray:
 
 def detect_largest_face(frame_bgr: np.ndarray) -> Optional[Tuple[np.ndarray, Tuple[int, int, int, int]]]:
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-    faces = get_face_cascade().detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(90, 90))
-    if len(faces) == 0:
+    height, width = gray.shape[:2]
+    if width == 0 or height == 0:
+        return None
+
+    resize_scale = min(1.0, 960.0 / max(width, height))
+    search_gray = gray
+    if resize_scale < 1.0:
+        search_gray = cv2.resize(
+            gray,
+            (max(1, int(width * resize_scale)), max(1, int(height * resize_scale))),
+            interpolation=cv2.INTER_LINEAR,
+        )
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    detection_variants = [
+        search_gray,
+        cv2.equalizeHist(search_gray),
+        clahe.apply(search_gray),
+    ]
+    min_dimension = min(search_gray.shape[:2])
+    min_face_size = max(56, int(min_dimension * 0.12))
+    cascade = get_face_cascade()
+
+    faces: List[Tuple[int, int, int, int]] = []
+    detection_settings = [
+        (1.15, 5, min_face_size),
+        (1.1, 4, max(48, int(min_face_size * 0.9))),
+        (1.05, 3, 40),
+    ]
+    for variant in detection_variants:
+        for scale_factor, min_neighbors, min_size in detection_settings:
+            detected_faces = cascade.detectMultiScale(
+                variant,
+                scaleFactor=scale_factor,
+                minNeighbors=min_neighbors,
+                minSize=(min_size, min_size),
+            )
+            if len(detected_faces) == 0:
+                continue
+            for x, y, w, h in detected_faces.tolist():
+                if resize_scale < 1.0:
+                    faces.append(
+                        (
+                            int(x / resize_scale),
+                            int(y / resize_scale),
+                            int(w / resize_scale),
+                            int(h / resize_scale),
+                        )
+                    )
+                else:
+                    faces.append((int(x), int(y), int(w), int(h)))
+
+    if not faces:
         return None
 
     x, y, w, h = max(faces, key=lambda rect: rect[2] * rect[3])
-    face = frame_bgr[y : y + h, x : x + w]
-    return face, (int(x), int(y), int(w), int(h))
+    pad_x = int(w * 0.08)
+    pad_y = int(h * 0.12)
+    x1 = max(0, x - pad_x)
+    y1 = max(0, y - pad_y)
+    x2 = min(width, x + w + pad_x)
+    y2 = min(height, y + h + pad_y)
+
+    face = frame_bgr[y1:y2, x1:x2]
+    return face, (int(x1), int(y1), int(x2 - x1), int(y2 - y1))
 
 
 def _eye_center_from_landmarks(landmarks: Any, indices: List[int], width: int, height: int) -> np.ndarray:
@@ -194,6 +252,97 @@ def valid_eye_distances(values: List[float]) -> List[float]:
     return [float(value) for value in values if is_valid_eye_distance(value)]
 
 
+def _nearest_sample_stats(sample_projections: np.ndarray) -> Tuple[List[float], List[float]]:
+    if len(sample_projections) <= 1:
+        return [], []
+
+    nearest_distances: List[float] = []
+    nearest_correlations: List[float] = []
+    for index, projection in enumerate(sample_projections):
+        best_distance = float("inf")
+        best_correlation = 0.0
+        for other_index, other_projection in enumerate(sample_projections):
+            if index == other_index:
+                continue
+
+            candidate_distance = float(np.linalg.norm(projection - other_projection))
+            if candidate_distance < best_distance:
+                best_distance = candidate_distance
+                best_correlation = safe_correlation(projection, other_projection)
+
+        if best_distance != float("inf"):
+            nearest_distances.append(best_distance)
+            nearest_correlations.append(best_correlation)
+
+    return nearest_distances, nearest_correlations
+
+
+def _build_user_candidates(
+    projection: np.ndarray,
+    eye_distance: float,
+    user_profiles: Dict[int, Dict[str, Any]],
+    sample_profiles: List[Dict[str, Any]],
+    ignore_sample_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    matches_by_user: Dict[int, List[Dict[str, Any]]] = {}
+
+    for sample in sample_profiles:
+        sample_id = sample.get("sample_id")
+        if ignore_sample_id is not None and sample_id == ignore_sample_id:
+            continue
+
+        user_id = int(sample["user_id"])
+        sample_projection = np.asarray(sample["projection"], dtype=np.float32)
+        sample_eye_distance = float(sample.get("eye_distance", 0.0))
+        matches_by_user.setdefault(user_id, []).append(
+            {
+                "distance": float(np.linalg.norm(projection - sample_projection)),
+                "correlation": safe_correlation(projection, sample_projection),
+                "eye_difference": (
+                    abs(eye_distance - sample_eye_distance)
+                    if is_valid_eye_distance(eye_distance) and is_valid_eye_distance(sample_eye_distance)
+                    else None
+                ),
+            }
+        )
+
+    candidates: List[Dict[str, Any]] = []
+    for user_id, sample_matches in matches_by_user.items():
+        profile = user_profiles.get(user_id)
+        if not profile:
+            continue
+
+        sample_matches.sort(key=lambda match: match["distance"])
+        top_matches = sample_matches[: min(3, len(sample_matches))]
+        profile_projection = np.asarray(profile["projection"], dtype=np.float32)
+        profile_eye_distance = float(profile["average_eye_distance"])
+        profile_eye_difference = (
+            abs(eye_distance - profile_eye_distance)
+            if is_valid_eye_distance(eye_distance) and is_valid_eye_distance(profile_eye_distance)
+            else sample_matches[0]["eye_difference"]
+        )
+
+        candidates.append(
+            {
+                "user_id": user_id,
+                "nearest_sample_distance": float(sample_matches[0]["distance"]),
+                "top_sample_distance": float(np.mean([match["distance"] for match in top_matches])),
+                "correlation": float(max(match["correlation"] for match in top_matches)),
+                "eye_difference": profile_eye_difference,
+                "profile_distance": float(np.linalg.norm(projection - profile_projection)),
+            }
+        )
+
+    candidates.sort(
+        key=lambda candidate: (
+            candidate["nearest_sample_distance"],
+            candidate["top_sample_distance"],
+            candidate["profile_distance"],
+        )
+    )
+    return candidates
+
+
 def passes_match_rules(
     best_distance: float,
     second_best_distance: float,
@@ -204,25 +353,49 @@ def passes_match_rules(
     eye_threshold: float,
     distance_margin: float,
     correlation_threshold: float,
+    profile_distance: Optional[float] = None,
+    support_distance: Optional[float] = None,
 ) -> bool:
-    required_margin = max(distance_margin, best_distance * 0.08)
+    required_margin = max(distance_margin, best_distance * 0.1)
     margin_condition = second_best_distance == float("inf") or (second_best_distance - best_distance) >= required_margin
-    effective_distance_limit = max(distance_threshold, float(profile.get("distance_limit", distance_threshold)))
-    profile_correlation_floor = float(profile.get("correlation_floor", correlation_threshold))
+    ratio_condition = second_best_distance == float("inf") or best_distance <= second_best_distance * 0.92
+    effective_distance_limit = max(
+        distance_threshold,
+        float(profile.get("sample_distance_limit", profile.get("distance_limit", distance_threshold))),
+    )
+    profile_correlation_floor = float(
+        profile.get("sample_correlation_floor", profile.get("correlation_floor", correlation_threshold))
+    )
     correlation_floor = max(correlation_threshold, MIN_CORRELATION_WITH_EYE, profile_correlation_floor)
     eye_condition = eye_difference is None or eye_difference <= eye_threshold
 
     # Eye detection can fail or drift on webcam frames. A very strong PCA/correlation
     # match should still identify an already-enrolled user instead of false rejecting.
     strong_appearance_condition = (
-        correlation >= max(correlation_floor + 0.05, 0.45)
+        correlation >= max(correlation_floor + 0.05, 0.5)
         or best_distance <= effective_distance_limit * 0.82
     )
+    support_condition = True
+    if support_distance is not None:
+        support_condition = support_distance <= max(
+            float(profile.get("distance_limit", effective_distance_limit * 1.25)),
+            effective_distance_limit * 1.2,
+        )
+
+    profile_condition = True
+    if profile_distance is not None:
+        profile_condition = profile_distance <= max(
+            float(profile.get("distance_limit", effective_distance_limit * 1.35)),
+            effective_distance_limit * 1.3,
+        )
 
     return (
         margin_condition
+        and ratio_condition
         and best_distance <= effective_distance_limit
         and correlation >= correlation_floor
+        and support_condition
+        and profile_condition
         and (eye_condition or strong_appearance_condition)
     )
 
@@ -318,6 +491,7 @@ def _calculate_thresholds(
     labels: List[int],
     eye_distances: List[float],
     user_profiles: Dict[int, Dict[str, Any]],
+    sample_profiles: List[Dict[str, Any]],
 ) -> Tuple[float, float, float, float]:
     genuine_distances: List[float] = []
     genuine_eye_differences: List[float] = []
@@ -328,18 +502,34 @@ def _calculate_thresholds(
 
     for index, user_id in enumerate(labels):
         true_profile = user_profiles[user_id]
-        genuine_distance = float(np.linalg.norm(projections[index] - true_profile["projection"]))
-        genuine_distances.append(genuine_distance)
-        genuine_correlations.append(safe_correlation(projections[index], true_profile["projection"]))
+        same_user_candidates = [
+            sample
+            for sample in sample_profiles
+            if sample["user_id"] == user_id and sample["sample_id"] != index
+        ]
+        if same_user_candidates:
+            genuine_candidate = min(
+                same_user_candidates,
+                key=lambda sample: float(np.linalg.norm(projections[index] - sample["projection"])),
+            )
+            genuine_distances.append(float(np.linalg.norm(projections[index] - genuine_candidate["projection"])))
+            genuine_correlations.append(safe_correlation(projections[index], genuine_candidate["projection"]))
+        else:
+            genuine_distances.append(float(np.linalg.norm(projections[index] - true_profile["projection"])))
+            genuine_correlations.append(safe_correlation(projections[index], true_profile["projection"]))
+
         sample_eye_distance = eye_distances[index]
         profile_eye_distance = float(true_profile["average_eye_distance"])
         if is_valid_eye_distance(sample_eye_distance) and is_valid_eye_distance(profile_eye_distance):
             genuine_eye_differences.append(abs(sample_eye_distance - profile_eye_distance))
 
         impostor_candidates = []
-        for other_user_id, profile in user_profiles.items():
+        for sample in sample_profiles:
+            other_user_id = int(sample["user_id"])
             if other_user_id == user_id:
                 continue
+
+            profile = user_profiles[other_user_id]
             sample_eye_available = is_valid_eye_distance(sample_eye_distance)
             profile_eye_available = is_valid_eye_distance(float(profile["average_eye_distance"]))
             eye_difference = (
@@ -349,9 +539,9 @@ def _calculate_thresholds(
             )
             impostor_candidates.append(
                 (
-                    float(np.linalg.norm(projections[index] - profile["projection"])),
+                    float(np.linalg.norm(projections[index] - sample["projection"])),
                     eye_difference,
-                    safe_correlation(projections[index], profile["projection"]),
+                    safe_correlation(projections[index], sample["projection"]),
                 )
             )
 
@@ -406,6 +596,7 @@ def _evaluate_model(
     labels: List[int],
     eye_distances: List[float],
     user_profiles: Dict[int, Dict[str, Any]],
+    sample_profiles: List[Dict[str, Any]],
     distance_threshold: float,
     eye_threshold: float,
     distance_margin: float,
@@ -416,47 +607,32 @@ def _evaluate_model(
     false_rejects = 0
 
     for index, true_user_id in enumerate(labels):
-        best_user_id = None
-        best_distance = float("inf")
-        best_eye_difference: Optional[float] = None
-        best_correlation = -1.0
-        second_best_distance = float("inf")
-
-        for candidate_user_id, profile in user_profiles.items():
-            candidate_distance = float(np.linalg.norm(projections[index] - profile["projection"]))
-            sample_eye_available = is_valid_eye_distance(eye_distances[index])
-            profile_eye_distance = float(profile["average_eye_distance"])
-            profile_eye_available = is_valid_eye_distance(profile_eye_distance)
-            candidate_eye_difference = (
-                abs(eye_distances[index] - profile_eye_distance)
-                if sample_eye_available and profile_eye_available
-                else None
-            )
-            candidate_correlation = safe_correlation(projections[index], profile["projection"])
-            if candidate_distance < best_distance:
-                second_best_distance = best_distance
-                best_distance = candidate_distance
-                best_eye_difference = candidate_eye_difference
-                best_correlation = candidate_correlation
-                best_user_id = candidate_user_id
-            elif candidate_distance < second_best_distance:
-                second_best_distance = candidate_distance
-
-        candidate_profile = user_profiles.get(best_user_id) if best_user_id is not None else None
+        candidates = _build_user_candidates(
+            projection=projections[index],
+            eye_distance=eye_distances[index],
+            user_profiles=user_profiles,
+            sample_profiles=sample_profiles,
+            ignore_sample_id=index,
+        )
+        best_candidate = candidates[0] if candidates else None
+        second_best_distance = candidates[1]["nearest_sample_distance"] if len(candidates) > 1 else float("inf")
+        candidate_profile = user_profiles.get(best_candidate["user_id"]) if best_candidate else None
         matched = bool(candidate_profile) and passes_match_rules(
-            best_distance=best_distance,
+            best_distance=best_candidate["nearest_sample_distance"],
             second_best_distance=second_best_distance,
-            eye_difference=best_eye_difference,
-            correlation=best_correlation,
+            eye_difference=best_candidate["eye_difference"],
+            correlation=best_candidate["correlation"],
             profile=candidate_profile,
             distance_threshold=distance_threshold,
             eye_threshold=eye_threshold,
             distance_margin=distance_margin,
             correlation_threshold=correlation_threshold,
+            profile_distance=best_candidate["profile_distance"],
+            support_distance=best_candidate["top_sample_distance"],
         )
-        if matched and best_user_id == true_user_id:
+        if matched and best_candidate["user_id"] == true_user_id:
             correct += 1
-        elif matched and best_user_id != true_user_id:
+        elif matched and best_candidate["user_id"] != true_user_id:
             false_accepts += 1
         else:
             false_rejects += 1
@@ -482,6 +658,15 @@ def train_model_from_database() -> Dict[str, Any]:
     n_components = min(sample_count - 1, feature_count, 50)
     pca = PCA(n_components=n_components, whiten=False, svd_solver="randomized", random_state=42)
     projections = pca.fit_transform(vectors)
+    sample_profiles = [
+        {
+            "sample_id": index,
+            "user_id": int(labels[index]),
+            "projection": projections[index],
+            "eye_distance": float(eye_distances[index]),
+        }
+        for index in range(len(labels))
+    ]
 
     user_profiles: Dict[int, Dict[str, Any]] = {}
     for user_id in sorted(set(labels)):
@@ -494,11 +679,22 @@ def train_model_from_database() -> Dict[str, Any]:
         average_eye_distance = float(np.mean(valid_user_eye_distances)) if valid_user_eye_distances else 0.0
         user_sample_distances = [float(np.linalg.norm(sample - mean_projection)) for sample in user_samples]
         user_sample_correlations = [safe_correlation(sample, mean_projection) for sample in user_samples]
+        nearest_sample_distances, nearest_sample_correlations = _nearest_sample_stats(user_samples)
         distance_limit = float(max(user_sample_distances) * 1.1) if user_sample_distances else float("inf")
         correlation_floor = (
             float(max(min(user_sample_correlations) * 0.95, 0.02))
             if user_sample_correlations
             else DEFAULT_CORRELATION_THRESHOLD
+        )
+        sample_distance_limit = (
+            float(max(nearest_sample_distances) * 1.08)
+            if nearest_sample_distances
+            else distance_limit
+        )
+        sample_correlation_floor = (
+            float(max(min(nearest_sample_correlations) * 0.95, 0.05))
+            if nearest_sample_correlations
+            else correlation_floor
         )
         user_profiles[user_id] = {
             "user_id": user_id,
@@ -512,6 +708,8 @@ def train_model_from_database() -> Dict[str, Any]:
             "min_training_correlation": min(user_sample_correlations) if user_sample_correlations else 0.0,
             "distance_limit": distance_limit,
             "correlation_floor": correlation_floor,
+            "sample_distance_limit": sample_distance_limit,
+            "sample_correlation_floor": sample_correlation_floor,
         }
         update_user_average_eye_distance(user_id, average_eye_distance)
         update_user_feature_summary(
@@ -530,12 +728,14 @@ def train_model_from_database() -> Dict[str, Any]:
         labels,
         eye_distances,
         user_profiles,
+        sample_profiles,
     )
     metrics = _evaluate_model(
         projections,
         labels,
         eye_distances,
         user_profiles,
+        sample_profiles,
         distance_threshold,
         eye_threshold,
         distance_margin,
@@ -545,6 +745,7 @@ def train_model_from_database() -> Dict[str, Any]:
     payload = {
         "pca": pca,
         "user_profiles": user_profiles,
+        "sample_profiles": sample_profiles,
         "projections": projections,
         "labels": labels,
         "eye_distances": eye_distances,
@@ -552,6 +753,7 @@ def train_model_from_database() -> Dict[str, Any]:
         "eye_threshold": round(eye_threshold, 4),
         "distance_margin": round(distance_margin, 4),
         "correlation_threshold": round(correlation_threshold, 4),
+        "matching_mode": "sample_profiles",
         "face_size": FACE_SIZE,
         "metrics": metrics,
         "trained_users": len(user_profiles),
@@ -569,11 +771,94 @@ def remove_trained_model() -> None:
         os.remove(MODEL_PATH)
 
 
+def _ensure_sample_profiles(model: Dict[str, Any]) -> Dict[str, Any]:
+    projections = model.get("projections")
+    labels = model.get("labels")
+    eye_distances = model.get("eye_distances")
+    if projections is None:
+        projections = []
+    if labels is None:
+        labels = []
+    if eye_distances is None:
+        eye_distances = []
+    user_profiles = model.get("user_profiles") or {}
+    needs_refresh = model.get("matching_mode") != "sample_profiles"
+    if len(projections) != len(labels):
+        return model
+
+    if not model.get("sample_profiles"):
+        model["sample_profiles"] = [
+            {
+                "sample_id": index,
+                "user_id": int(labels[index]),
+                "projection": projections[index],
+                "eye_distance": float(eye_distances[index]) if index < len(eye_distances) else 0.0,
+            }
+            for index in range(len(labels))
+        ]
+        needs_refresh = True
+
+    for user_id, profile in user_profiles.items():
+        if profile.get("sample_distance_limit") is not None and profile.get("sample_correlation_floor") is not None:
+            continue
+
+        user_sample_projections = np.array(
+            [sample["projection"] for sample in model["sample_profiles"] if int(sample["user_id"]) == int(user_id)],
+            dtype=np.float32,
+        )
+        nearest_distances, nearest_correlations = _nearest_sample_stats(user_sample_projections)
+        distance_limit = float(profile.get("distance_limit", model.get("distance_threshold", DEFAULT_DISTANCE_THRESHOLD)))
+        correlation_floor = float(
+            profile.get("correlation_floor", model.get("correlation_threshold", DEFAULT_CORRELATION_THRESHOLD))
+        )
+        profile["sample_distance_limit"] = (
+            float(max(nearest_distances) * 1.08)
+            if nearest_distances
+            else distance_limit
+        )
+        profile["sample_correlation_floor"] = (
+            float(max(min(nearest_correlations) * 0.95, 0.05))
+            if nearest_correlations
+            else correlation_floor
+        )
+        needs_refresh = True
+
+    projections_array = np.asarray(projections, dtype=np.float32)
+    labels_list = [int(label) for label in labels]
+    eye_distances_list = [float(value) for value in eye_distances]
+    if needs_refresh and len(projections_array) and user_profiles:
+        distance_threshold, eye_threshold, distance_margin, correlation_threshold = _calculate_thresholds(
+            projections_array,
+            labels_list,
+            eye_distances_list,
+            user_profiles,
+            model["sample_profiles"],
+        )
+        model["distance_threshold"] = round(distance_threshold, 4)
+        model["eye_threshold"] = round(eye_threshold, 4)
+        model["distance_margin"] = round(distance_margin, 4)
+        model["correlation_threshold"] = round(correlation_threshold, 4)
+        model["metrics"] = _evaluate_model(
+            projections_array,
+            labels_list,
+            eye_distances_list,
+            user_profiles,
+            model["sample_profiles"],
+            distance_threshold,
+            eye_threshold,
+            distance_margin,
+            correlation_threshold,
+        )
+        model["matching_mode"] = "sample_profiles"
+
+    return model
+
+
 def load_model() -> Optional[Dict[str, Any]]:
     if not os.path.exists(MODEL_PATH):
         return None
     with open(MODEL_PATH, "rb") as model_file:
-        return pickle.load(model_file)
+        return _ensure_sample_profiles(pickle.load(model_file))
 
 
 def get_model_summary() -> Dict[str, Any]:
@@ -620,36 +905,16 @@ def recognize_face(image_data: str) -> Dict[str, Any]:
     eye_distance = calculate_normalized_eye_distance(face_bgr)
     feature_vector = flatten_face(processed_face).reshape(1, -1)
     projection = model["pca"].transform(feature_vector)[0]
-
-    best_match: Optional[Dict[str, Any]] = None
-    second_best_distance = float("inf")
-    for user_id, profile in model["user_profiles"].items():
-        pca_distance = float(np.linalg.norm(projection - profile["projection"]))
-        profile_eye_distance = float(profile["average_eye_distance"])
-        eye_difference = (
-            abs(eye_distance - profile_eye_distance)
-            if is_valid_eye_distance(eye_distance) and is_valid_eye_distance(profile_eye_distance)
-            else None
-        )
-        correlation = safe_correlation(projection, profile["projection"])
-        candidate = {
-            "user_id": int(user_id),
-            "name": profile["name"],
-            "person_identifier": profile["person_identifier"],
-            "email": profile["email"],
-            "pca_distance": pca_distance,
-            "eye_difference": eye_difference,
-            "correlation": correlation,
-            "distance_limit": float(profile.get("distance_limit", distance_threshold if "distance_threshold" in locals() else DEFAULT_DISTANCE_THRESHOLD)),
-            "correlation_floor": float(profile.get("correlation_floor", DEFAULT_CORRELATION_THRESHOLD)),
-        }
-
-        if best_match is None or candidate["pca_distance"] < best_match["pca_distance"]:
-            if best_match is not None:
-                second_best_distance = best_match["pca_distance"]
-            best_match = candidate
-        elif candidate["pca_distance"] < second_best_distance:
-            second_best_distance = candidate["pca_distance"]
+    sample_profiles = model.get("sample_profiles") or []
+    user_profiles = model["user_profiles"]
+    candidates = _build_user_candidates(
+        projection=projection,
+        eye_distance=eye_distance,
+        user_profiles=user_profiles,
+        sample_profiles=sample_profiles,
+    )
+    best_match = candidates[0] if candidates else None
+    second_best_distance = candidates[1]["nearest_sample_distance"] if len(candidates) > 1 else float("inf")
 
     if best_match is None:
         return {
@@ -663,16 +928,19 @@ def recognize_face(image_data: str) -> Dict[str, Any]:
     eye_threshold = float(model.get("eye_threshold", DEFAULT_EYE_THRESHOLD))
     distance_margin = float(model.get("distance_margin", 0.25))
     correlation_threshold = float(model.get("correlation_threshold", DEFAULT_CORRELATION_THRESHOLD))
+    profile = user_profiles[best_match["user_id"]]
     matched = passes_match_rules(
-        best_distance=best_match["pca_distance"],
+        best_distance=best_match["nearest_sample_distance"],
         second_best_distance=second_best_distance,
         eye_difference=best_match["eye_difference"],
         correlation=best_match["correlation"],
-        profile=model["user_profiles"][best_match["user_id"]],
+        profile=profile,
         distance_threshold=distance_threshold,
         eye_threshold=eye_threshold,
         distance_margin=distance_margin,
         correlation_threshold=correlation_threshold,
+        profile_distance=best_match["profile_distance"],
+        support_distance=best_match["top_sample_distance"],
     )
 
     if matched:
@@ -682,11 +950,11 @@ def recognize_face(image_data: str) -> Dict[str, Any]:
             "message": "Face Detected - Access Granted",
             "user": {
                 "id": best_match["user_id"],
-                "name": best_match["name"],
-                "person_identifier": best_match["person_identifier"],
-                "email": best_match["email"],
+                "name": profile["name"],
+                "person_identifier": profile["person_identifier"],
+                "email": profile["email"],
             },
-            "pca_distance": round(best_match["pca_distance"], 4),
+            "pca_distance": round(best_match["nearest_sample_distance"], 4),
             "eye_difference": round(best_match["eye_difference"], 4) if best_match["eye_difference"] is not None else None,
             "correlation": round(best_match["correlation"], 4),
             "bounding_box": {
@@ -702,7 +970,7 @@ def recognize_face(image_data: str) -> Dict[str, Any]:
         "status": "denied",
         "message": "Face Detected - Access Denied (Unknown User)",
         "user": None,
-        "pca_distance": round(best_match["pca_distance"], 4),
+        "pca_distance": round(best_match["nearest_sample_distance"], 4),
         "eye_difference": round(best_match["eye_difference"], 4) if best_match["eye_difference"] is not None else None,
         "correlation": round(best_match["correlation"], 4),
         "bounding_box": {

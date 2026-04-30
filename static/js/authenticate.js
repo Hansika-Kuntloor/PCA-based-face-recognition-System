@@ -53,13 +53,25 @@ function syncAuthCanvasSize() {
 
 function captureAuthFrame() {
     syncAuthCanvasSize();
+    const sourceWidth = authElements.video.videoWidth;
+    const sourceHeight = authElements.video.videoHeight;
+    if (!sourceWidth || !sourceHeight) {
+        throw new Error("Camera is not ready yet. Wait a moment and try again.");
+    }
+
     const context = authElements.captureCanvas.getContext("2d");
+    const maxWidth = 640;
+    const scale = sourceWidth > maxWidth ? maxWidth / sourceWidth : 1;
+    const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+    const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+    authElements.captureCanvas.width = targetWidth;
+    authElements.captureCanvas.height = targetHeight;
     context.drawImage(
         authElements.video,
         0,
         0,
-        authElements.captureCanvas.width,
-        authElements.captureCanvas.height,
+        targetWidth,
+        targetHeight,
     );
     return authElements.captureCanvas.toDataURL("image/jpeg", 0.82);
 }
@@ -136,11 +148,12 @@ async function authenticateFace() {
         authElements.authMessage.textContent = authConfig.mode === "scan"
             ? "Checking scanned face..."
             : "Checking captured samples...";
+        const useBurstRecognition = authConfig.sampleCount > 1;
 
         const response = await fetch("/recognize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(authConfig.mode === "scan" ? { image: samples[0] } : { images: samples }),
+            body: JSON.stringify(useBurstRecognition ? { images: samples } : { image: samples[0] }),
         });
         const data = await response.json();
 

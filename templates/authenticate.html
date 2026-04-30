@@ -74,7 +74,7 @@
 <script>
     window.AUTH_CONFIG = {
         mode: "{{ 'scan' if scan_context == 'admin' else 'samples' }}",
-        sampleCount: {{ 1 if scan_context == 'admin' else 10 }},
+        sampleCount: {{ 6 if scan_context == 'admin' else 10 }},
         buttonLabel: "{{ 'Scan Face' if scan_context == 'admin' else 'Take Samples' }}"
     };
 </script>
