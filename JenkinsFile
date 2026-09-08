@@ -1,0 +1,60 @@
+
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                echo 'Checking out project from GitHub...'
+            }
+        }
+
+        stage('Setup Python') {
+            steps {
+                bat 'python --version'
+                bat 'pip --version'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                bat 'pip install -r requirements.txt'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Testing Python files...'
+                bat 'python -m py_compile app.py'
+                bat 'python -m py_compile train.py'
+                bat 'python -m py_compile face_utils.py'
+                bat 'python -m py_compile db.py'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Building PCA Face Recognition project...'
+                bat 'python train.py'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deployment stage completed.'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Jenkins Pipeline completed successfully!'
+        }
+
+        failure {
+            echo 'Jenkins Pipeline failed.'
+        }
+    }
+}
+
