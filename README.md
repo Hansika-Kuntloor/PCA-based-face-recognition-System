@@ -190,3 +190,17 @@ python train.py
 - Add blink detection or head-movement anti-spoofing
 - Add downloadable admin reports
 - Move from SQLite to MySQL if multi-user deployment is needed
+
+## Jenkins CI Pipeline
+
+This project is integrated with Jenkins for continuous integration.
+
+The Jenkins pipeline performs the following steps:
+1. Checks out the project from GitHub.
+2. Verifies the Python and pip versions.
+3. Installs the required dependencies.
+4. Checks Python files for syntax errors.
+5. Trains the PCA face recognition model.
+6. Completes the deployment stage.
+
+The pipeline helps verify that the project can be built successfully after changes are made.
