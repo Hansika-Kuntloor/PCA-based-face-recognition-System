@@ -203,4 +203,4 @@ The Jenkins pipeline performs the following steps:
 5. Trains the PCA face recognition model.
 6. Completes the deployment stage.
 
-The pipeline helps verify that the project can be built successfully after changes are made.
+The pipeline helps verify that the project is tested and built successfully after every change.
