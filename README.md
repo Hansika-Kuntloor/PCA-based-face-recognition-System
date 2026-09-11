@@ -204,3 +204,4 @@ The Jenkins pipeline performs the following steps:
 6. Completes the deployment stage.
 
 The pipeline helps verify that the project can be built, tested, and trained successfully after changes are made.
+Jenkins webhook automatic build test.
