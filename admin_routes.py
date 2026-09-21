@@ -1,4 +1,6 @@
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for, Response
+import csv
+import io
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from auth_utils import admin_required
@@ -128,3 +130,40 @@ def train():
 @admin_required
 def logs():
     return render_template("admin_logs.html", logs=list_auth_logs(limit=200))
+
+@admin_bp.route("/logs/download")
+@admin_required
+def download_logs():
+    logs = list_auth_logs(limit=200)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "Time",
+        "Status",
+        "Matched User",
+        "PCA Distance",
+        "Eye Difference",
+        "Correlation",
+        "Message",
+    ])
+
+    for log in logs:
+        writer.writerow([
+            log["created_at"],
+            log["status"],
+            log["matched_name"] or "-",
+            log["pca_distance"] if log["pca_distance"] is not None else "-",
+            log["eye_difference"] if log["eye_difference"] is not None else "-",
+            log["correlation"] if log["correlation"] is not None else "-",
+            log["message"],
+        ])
+
+    response = Response(
+        output.getvalue(),
+        mimetype="text/csv",
+    )
+    response.headers["Content-Disposition"] = "attachment; filename=authentication_report.csv"
+
+    return response
