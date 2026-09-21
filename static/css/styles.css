@@ -263,6 +263,28 @@ button,
     transition: transform 0.16s ease, opacity 0.16s ease, background 0.16s ease;
 }
 
+/* Download Report button */
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    padding: 12px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(14, 90, 96, 0.18);
+    font: inherit;
+    text-decoration: none;
+    transition: transform 0.16s ease, opacity 0.16s ease, background 0.16s ease;
+    margin-top: 12px;
+}
+
+.button:hover {
+    transform: translateY(-1px);
+    opacity: 0.96;
+}
+
 button:hover,
 .link-button:hover,
 .mini-button:hover {
